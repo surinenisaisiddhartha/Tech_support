@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+python-multipart
+google-generativeai
+sentence-transformers
+faiss-cpu
+pymupdf
+python-dotenv          # 🔑 For reading .env
+numpy                  # 📐 Required for FAISS/vector math
+scikit-learn           # 🧪 Optional but useful for similarity metrics
+motor
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+pydantic
