@@ -2,6 +2,7 @@
 from db import chats_col
 from bson import ObjectId
 import datetime
+from fastapi.encoders import jsonable_encoder
 
 async def save_chat_message(user_id: str, query: str, answer: str, metadata: dict | None = None):
     doc = {
@@ -18,10 +19,14 @@ async def get_recent_messages(user_id: str, limit: int = 20):
     cursor = chats_col.find({"user_id": user_id}).sort("created_at", -1).limit(limit)
     msgs = []
     async for d in cursor:
+        # Normalize fields for frontend HistoryMessage type
+        safe_meta = jsonable_encoder(d.get("metadata", {}))
         msgs.append({
-            "query": d.get("query"),
+            "id": str(d.get("_id")) if d.get("_id") is not None else None,
+            "user_id": d.get("user_id"),
+            "question": d.get("query"),
             "answer": d.get("answer"),
-            "metadata": d.get("metadata", {}),
+            "metadata": safe_meta,
             "timestamp": d.get("created_at")
         })
     # newest-first -> return oldest-first

@@ -1,26 +1,51 @@
-import faiss
-import numpy as np
 import os
 import json
-from sentence_transformers import SentenceTransformer
-from config import EMBEDDING_DIM
 import re
+import uuid
+from typing import List, Dict, Any
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qmodels
+from config import EMBEDDING_DIM
 
 # Load embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# FAISS index
-faiss_index = faiss.IndexFlatL2(EMBEDDING_DIM)
+# Qdrant configuration via environment variables
+QDRANT_URL = os.getenv("QDRANT_URL")  # e.g., https://xxxx-xxxx-xxxx.eu-central.aws.cloud.qdrant.io
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "techsupport_chunks")
 
-# Store for chunk metadata: [{"text": ..., "metadata": {...}}, ...]
-chunk_store = []
+# Initialize Qdrant client (cloud or local depending on URL)
+qdrant: QdrantClient | None = None
+if QDRANT_URL:
+    qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+else:
+    # Fallback to local Qdrant if URL is not provided (assumes docker/local service)
+    qdrant = QdrantClient(host=os.getenv("QDRANT_HOST", "127.0.0.1"), port=int(os.getenv("QDRANT_PORT", "6333")))
 
-# File paths
-VECTOR_STORE_PATH = "data/vector_store.faiss"
-CHUNK_STORE_PATH = "data/chunk_store.json"
 
-# Ensure storage dir exists
-os.makedirs("data", exist_ok=True)
+def ensure_collection():
+    """Ensure the target collection exists with correct vector size/schema."""
+    assert qdrant is not None, "Qdrant client is not initialized. Set QDRANT_URL/QDRANT_HOST."
+    existing = {c.name for c in qdrant.get_collections().collections}
+    if QDRANT_COLLECTION not in existing:
+        qdrant.recreate_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=qmodels.VectorParams(size=EMBEDDING_DIM, distance=qmodels.Distance.COSINE),
+        )
+    # Ensure payload index for domain filtering exists
+    try:
+        qdrant.create_payload_index(
+            collection_name=QDRANT_COLLECTION,
+            field_name="metadata.domain",
+            field_schema=qmodels.PayloadSchemaType.KEYWORD,
+        )
+    except Exception:
+        # Index might already exist; ignore
+        pass
 
 
 def page_texts_to_chunks(page_texts, pdf_name, domain="techsupport", chunk_size=200, overlap=50):
@@ -41,7 +66,7 @@ def page_texts_to_chunks(page_texts, pdf_name, domain="techsupport", chunk_size=
                 "metadata": {
                     "pdf_name": pdf_name,
                     "page_number": page_num,
-                    "domain": domain  # ✅ Store domain for filtering later
+                    "domain": domain  # Store domain for filtering later
                 }
             })
     return results
@@ -49,14 +74,27 @@ def page_texts_to_chunks(page_texts, pdf_name, domain="techsupport", chunk_size=
 
 def embed_chunks_with_metadata(chunks_with_meta):
     """
-    Embeds chunks (list of {"text":..., "metadata":...}) and stores them in FAISS + local store.
+    Embeds chunks (list of {"text":..., "metadata":...}) and stores them in Qdrant with payload.
     """
-    global chunk_store
+    ensure_collection()
+    texts = [c.get("text", "") for c in chunks_with_meta]
+    vectors = embedding_model.encode(texts)
 
-    vectors = embedding_model.encode([c["text"] for c in chunks_with_meta])
-    faiss_index.add(np.array(vectors))
-    chunk_store.extend(chunks_with_meta)
-    save_vector_store()
+    points = []
+    for vec, item in zip(vectors, chunks_with_meta):
+        payload = {
+            "text": item.get("text", ""),
+            "metadata": item.get("metadata", {}),
+        }
+        points.append(
+            qmodels.PointStruct(
+                id=str(uuid.uuid4()),
+                vector=np.asarray(vec, dtype=float).tolist(),
+                payload=payload,
+            )
+        )
+
+    qdrant.upsert(collection_name=QDRANT_COLLECTION, points=points)
 
 
 def embed_query_and_search(query, k=3, require_domain=None):
@@ -65,165 +103,58 @@ def embed_query_and_search(query, k=3, require_domain=None):
     Optionally filter by domain before searching.
     Returns: list of dicts ({"text":..., "metadata":...})
     """
-    # Load from disk if index empty
-    if faiss_index.ntotal == 0:
-        load_vector_store()
+    ensure_collection()
 
-    # If there is still no data, return empty results gracefully
-    if faiss_index.ntotal == 0 or not chunk_store:
-        return []
+    # Always embed the query once
+    query_vector = embedding_model.encode([query])[0].astype(float).tolist()
 
-    # If filtering by domain, select only relevant chunk indices
+    # Build optional domain filter
+    q_filter = None
     if require_domain:
-        # Guard against legacy/invalid chunk formats in persisted store
-        filtered_indices = [
-            idx for idx, chunk in enumerate(chunk_store)
-            if isinstance(chunk, dict)
-            and isinstance(chunk.get("metadata"), dict)
-            and chunk.get("metadata", {}).get("domain") == require_domain
-        ]
-
-        if not filtered_indices:
-            return []
-
-        # Create temporary FAISS index for filtered chunks
-        temp_index = faiss.IndexFlatL2(EMBEDDING_DIM)
-        filtered_vectors = embedding_model.encode(
-            [chunk_store[i].get("text", "") for i in filtered_indices]
+        q_filter = qmodels.Filter(
+            must=[qmodels.FieldCondition(key="metadata.domain", match=qmodels.MatchValue(value=require_domain))]
         )
-        temp_index.add(np.array(filtered_vectors))
 
-        # Search only within filtered subset
-        query_vector = embedding_model.encode([query])[0]
-        D, I = temp_index.search(np.array([query_vector]), k)
+    # Run vector search
+    hits = qdrant.search(
+        collection_name=QDRANT_COLLECTION,
+        query_vector=query_vector,
+        limit=k,
+        query_filter=q_filter,
+        with_payload=True,
+    )
 
-        results = []
-        for idx in I[0]:
-            if 0 <= idx < len(filtered_indices):
-                candidate = chunk_store[filtered_indices[idx]]
-                if isinstance(candidate, dict):
-                    results.append(candidate)
-        if results:
-            return results
+    results: List[Dict[str, Any]] = []
+    for h in hits:
+        payload = h.payload or {}
+        text = payload.get("text", "")
+        meta = payload.get("metadata", {}) if isinstance(payload.get("metadata", {}), dict) else {}
+        if text:
+            results.append({"text": text, "metadata": meta})
 
-        # Fallback: keyword match within filtered subset when vector search finds nothing
-        def normalize_text(s: str) -> str:
-            return re.sub(r"[^a-z0-9\s]", " ", (s or "").lower())
+    # If no results and a domain was required, try without domain as a soft fallback
+    if not results and require_domain:
+        hits = qdrant.search(
+            collection_name=QDRANT_COLLECTION,
+            query_vector=query_vector,
+            limit=k,
+            with_payload=True,
+        )
+        for h in hits:
+            payload = h.payload or {}
+            text = payload.get("text", "")
+            meta = payload.get("metadata", {}) if isinstance(payload.get("metadata", {}), dict) else {}
+            if text:
+                results.append({"text": text, "metadata": meta})
 
-        def expand_tokens(tokens: list[str]) -> set[str]:
-            expanded: set[str] = set()
-            for t in tokens:
-                if len(t) < 3:
-                    continue
-                expanded.add(t)
-                # crude stemming
-                for suffix in ("ing", "ed", "es", "s"):
-                    if t.endswith(suffix) and len(t) - len(suffix) >= 3:
-                        expanded.add(t[: -len(suffix)])
-            return expanded
-
-        q_norm = normalize_text(query)
-        q_tokens = expand_tokens(q_norm.split())
-        if not q_tokens:
-            return []
-        scored = []
-        for i in filtered_indices:
-            chunk = chunk_store[i]
-            text = normalize_text(chunk.get("text", ""))
-            meta = chunk.get("metadata", {})
-            pdf_name = normalize_text(meta.get("pdf_name", ""))
-            score = sum(1 for t in q_tokens if t in text or t in pdf_name)
-            if score > 0:
-                scored.append((score, i))
-        scored.sort(reverse=True)
-        return [chunk_store[i] for score, i in scored[:k]]
-
-    # If no filtering → search in full index
-    query_vector = embedding_model.encode([query])[0]
-    D, I = faiss_index.search(np.array([query_vector]), k)
-
-    results = []
-    for idx in I[0]:
-        if 0 <= idx < len(chunk_store):
-            candidate = chunk_store[idx]
-            if isinstance(candidate, dict):
-                results.append(candidate)
-    if results:
-        return results
-
-    # Fallback: keyword match across all chunks
-    def normalize_text(s: str) -> str:
-        return re.sub(r"[^a-z0-9\s]", " ", (s or "").lower())
-
-    def expand_tokens(tokens: list[str]) -> set[str]:
-        expanded: set[str] = set()
-        for t in tokens:
-            if len(t) < 3:
-                continue
-            expanded.add(t)
-            for suffix in ("ing", "ed", "es", "s"):
-                if t.endswith(suffix) and len(t) - len(suffix) >= 3:
-                    expanded.add(t[: -len(suffix)])
-        return expanded
-
-    q_norm = normalize_text(query)
-    q_tokens = expand_tokens(q_norm.split())
-    if not q_tokens:
-        return []
-    scored = []
-    for i, chunk in enumerate(chunk_store):
-        if not isinstance(chunk, dict):
-            continue
-        text = normalize_text(chunk.get("text", ""))
-        meta = chunk.get("metadata", {})
-        pdf_name = normalize_text(meta.get("pdf_name", ""))
-        score = sum(1 for t in q_tokens if t in text or t in pdf_name)
-        if score > 0:
-            scored.append((score, i))
-    scored.sort(reverse=True)
-    return [chunk_store[i] for score, i in scored[:k]]
-
-
-
+    return results
+    
+    
 def save_vector_store():
-    """ Saves FAISS index + chunk store to disk. """
-    faiss.write_index(faiss_index, VECTOR_STORE_PATH)
-    with open(CHUNK_STORE_PATH, "w", encoding="utf-8") as f:
-        json.dump(chunk_store, f, ensure_ascii=False, indent=2)
+    """Deprecated: No-op with Qdrant backend (kept for compatibility)."""
+    return None
 
 
 def load_vector_store():
-    """ Loads FAISS index + chunk store from disk. """
-    global faiss_index, chunk_store
-
-    if os.path.exists(VECTOR_STORE_PATH) and os.path.getsize(VECTOR_STORE_PATH) > 0:
-        try:
-            faiss_index = faiss.read_index(VECTOR_STORE_PATH)
-            print("✅ FAISS index loaded.")
-        except Exception as e:
-            print(f"❌ Failed to load FAISS index: {e}")
-            faiss_index = faiss.IndexFlatL2(EMBEDDING_DIM)
-    else:
-        print("⚠️ No FAISS index found, starting fresh.")
-
-    if os.path.exists(CHUNK_STORE_PATH):
-        try:
-            with open(CHUNK_STORE_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            # Normalize legacy formats: strings -> dict with minimal metadata
-            normalized = []
-            if isinstance(loaded, list):
-                for item in loaded:
-                    if isinstance(item, dict):
-                        text_val = item.get("text", "") if isinstance(item.get("text"), str) else ""
-                        metadata_val = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
-                        normalized.append({"text": text_val, "metadata": metadata_val})
-                    elif isinstance(item, str):
-                        normalized.append({"text": item, "metadata": {}})
-            chunk_store = normalized
-            print("✅ Chunk store loaded.")
-        except Exception as e:
-            print(f"❌ Failed to load chunk store: {e}")
-            chunk_store = []
-    else:
-        print("⚠️ No chunk store found, starting fresh.")
+    """Deprecated: No-op with Qdrant backend (kept for compatibility)."""
+    return None

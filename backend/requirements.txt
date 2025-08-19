@@ -4,7 +4,6 @@ pydantic
 python-multipart
 google-generativeai
 sentence-transformers
-faiss-cpu
 pymupdf
 python-dotenv          # 🔑 For reading .env
 numpy                  # 📐 Required for FAISS/vector math
@@ -14,3 +13,6 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-dotenv
 pydantic
+qdrant-client          # 🌐 Qdrant vector DB client
+Pillow                 # 🖼️ Image handling for OCR
+pytesseract            # 🔤 Tesseract OCR Python bindings

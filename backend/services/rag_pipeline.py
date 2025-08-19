@@ -1,6 +1,8 @@
 import google.generativeai as genai
 from services.embedder import embed_query_and_search
 from config import GEMINI_API_KEY
+import re
+
 
 # Configure Gemini API
 if GEMINI_API_KEY:
@@ -105,7 +107,8 @@ def build_rag_prompt(chunks_with_meta, user_query, chat_history=None):
         for h in chat_history[-4:]:
             if not isinstance(h, dict):
                 continue
-            q = h.get("query", "")
+            # Support both 'query' and 'question' keys from history items
+            q = h.get("query", h.get("question", ""))
             a = h.get("answer", "")
             turns.append(f"User: {q}\nAssistant: {a}")
         if turns:
@@ -172,3 +175,59 @@ def generate_answer_stream(prompt: str):
                     yield text_part
     except Exception as e:
         yield f"[Error streaming response: {e}]"
+
+
+# =========================
+# Extractive Fallback
+# =========================
+def extractive_answer_from_chunks(user_query: str, chunks_with_meta, max_sentences: int = 4) -> str:
+    """
+    Build a concise, extractive answer from retrieved chunk texts when generation is weak.
+    Scores sentences by keyword overlap with the query (simple heuristic),
+    then returns the top few as a coherent snippet.
+    """
+    if not chunks_with_meta:
+        return ""
+
+    def normalize(s: str) -> str:
+        return re.sub(r"[^a-z0-9\s]", " ", (s or "").lower())
+
+    q_tokens = [t for t in normalize(user_query).split() if len(t) >= 3]
+    if not q_tokens:
+        return ""
+
+    # Split chunk texts into sentences and score
+    candidates = []  # (score, sentence, meta)
+    for c in chunks_with_meta:
+        text = c.get("text", "") if isinstance(c, dict) else ""
+        meta = c.get("metadata", {}) if isinstance(c, dict) else {}
+        # Rough sentence split
+        sentences = re.split(r"(?<=[\.!?])\s+", text)
+        for s in sentences:
+            s_norm = normalize(s)
+            if len(s_norm) < 20:
+                continue
+            score = sum(1 for t in q_tokens if t in s_norm)
+            if score > 0:
+                candidates.append((score, s.strip(), meta))
+
+    if not candidates:
+        return ""
+
+    # Sort by score (desc) and keep unique-ish sentences
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    picked = []
+    seen = set()
+    for _, sent, _ in candidates:
+        key = sent.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(sent)
+        if len(picked) >= max_sentences:
+            break
+
+    if not picked:
+        return ""
+
+    return "\n".join(f"- {s}" for s in picked)

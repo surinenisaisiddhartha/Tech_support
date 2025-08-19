@@ -1,12 +1,15 @@
 from fastapi import APIRouter
-from services.embedder import faiss_index, chunk_store, save_vector_store
-import numpy as np
+from qdrant_client.http import models as qmodels
+from services.embedder import qdrant, QDRANT_COLLECTION
+from config import EMBEDDING_DIM
 
 router = APIRouter()
 
 @router.post("/reset")
 def reset_vector_store():
-    faiss_index.reset()
-    chunk_store.clear()
-    save_vector_store()
-    return {"message": "Vector store has been reset."}
+    # Recreate the Qdrant collection with the correct vector params
+    qdrant.recreate_collection(
+        collection_name=QDRANT_COLLECTION,
+        vectors_config=qmodels.VectorParams(size=EMBEDDING_DIM, distance=qmodels.Distance.COSINE),
+    )
+    return {"message": "Qdrant collection has been reset."}
