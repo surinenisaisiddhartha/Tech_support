@@ -8,6 +8,14 @@ class UploadResponse(BaseModel):
     filename: str
     summary: str
 
+class UrlIngestRequest(BaseModel):
+    url: str
+
+class UrlIngestResponse(BaseModel):
+    url: str
+    title: Optional[str] = None
+    summary: str
+
 class ChatRequest(BaseModel):
     query: str
     filter_mode: Optional[bool] = True 

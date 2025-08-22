@@ -2,232 +2,171 @@ import google.generativeai as genai
 from services.embedder import embed_query_and_search
 from config import GEMINI_API_KEY
 import re
+from typing import List, Dict, Any, Optional
 
-
-# Configure Gemini API
+# Configure Gemini
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     generation_model = genai.GenerativeModel("gemini-2.0-flash")
-    classification_model = genai.GenerativeModel("gemini-2.0-flash")
 else:
     generation_model = None
-    classification_model = None
 
 # =========================
 # System Prompt
 # =========================
 SYSTEM_PROMPT = """
-You are a Tech Support Assistant specialized in troubleshooting software and hardware issues. Your expertise covers:
-- Software installation, configuration, and troubleshooting
-- Hardware setup, diagnostics, and repair
-- Network connectivity and security issues
-- Operating system problems and solutions
-- Device drivers and compatibility issues
-- Performance optimization and maintenance
+You are a helpful AI assistant. Your goal is to provide accurate, helpful, and concise responses.
 
 Guidelines:
-1. Only answer queries related to tech support, troubleshooting, software, and hardware issues.
-2. If the answer is not found in the provided documents, say: "I'm sorry, I don't have information about that specific issue in my tech support knowledge base."
-3. Always cite the source in your answer: (Source: PDF_NAME, Page X).
-4. For non-tech support queries, politely redirect: "I'm a tech support assistant. Please ask me about software, hardware, or troubleshooting issues."
-5. For simple greetings like "hi", "hello", or "hey", respond with: "Hello! I'm your tech support assistant. How can I help you with any software or hardware issues today?"
-6. Keep responses clear, concise, and professional.
-7. Provide step-by-step solutions when possible.
+1. Analyze the question's complexity and depth before answering
+2. For factual questions, provide clear, well-structured answers
+3. For complex questions, break down the response into logical sections
+4. If the question is unclear, ask for clarification
+5. When relevant, reference the source of your information
+6. If you don't know the answer, say so rather than making up information
 """
 
 # =========================
-# PDF Classification for Uploads
+# Question Analysis
 # =========================
-def classify_pdf_is_techsupport(text: str) -> bool:
-    """
-    Classify a PDF document as tech support related or not.
-    Used during PDF upload to ensure only tech support documents are accepted.
-    """
-    if classification_model is None:
-        # If no classification model, allow upload (fallback behavior)
-        return True
-        
-    if not text or not text.strip():
-        return False
-        
-    # Use first 4000 characters for classification to stay within token limits
-    snippet = text[:4000]
+def analyze_question(question: str) -> dict:
+    """Analyze the question to determine its depth and type."""
+    # Basic analysis - can be enhanced with more sophisticated NLP
+    question = question.lower().strip()
     
-    prompt = f"""
-Analyze the following document content and determine if it is related to tech support, troubleshooting, software, or hardware issues.
-
-Tech support content includes:
-- Software installation, configuration, troubleshooting guides
-- Hardware setup, diagnostics, repair manuals
-- Network connectivity and security documentation
-- Operating system problems and solutions
-- Device drivers and compatibility information
-- Performance optimization and maintenance guides
-- User manuals for software/hardware
-- Technical documentation and FAQs
-
-Document content:
-{snippet}
-
-Respond with only one word: "techsupport" if the document is related to tech support, or "other" if it is not.
-"""
+    # Check question type
+    question_type = "factual"
+    if any(word in question for word in ["how", "why", "explain", "process"]):
+        question_type = "explanatory"
+    elif any(word in question for word in ["compare", "difference", "similar"]):
+        question_type = "comparative"
+    elif any(word in question for word in ["opinion", "think about"]):
+        question_type = "opinion"
     
-    try:
-        response = classification_model.generate_content(prompt)
-        result = (response.text or "").strip().lower()
-        return result == "techsupport"
-    except Exception as e:
-        print(f" Error classifying PDF: {e}")
-        # On error, allow upload (fallback behavior)
-        return True
+    # Estimate question depth (1-5 scale)
+    word_count = len(question.split())
+    depth = min(5, max(1, word_count // 5))  # Simple heuristic based on length
+    
+    return {
+        "type": question_type,
+        "depth": depth,
+        "requires_context": depth > 2  # Deeper questions likely need more context
+    }
 
 # =========================
 # Build RAG Prompt
 # =========================
-def build_rag_prompt(chunks_with_meta, user_query, chat_history=None):
-    """
-    Builds prompt including chunk texts and their sources.
-    """
+def build_rag_prompt(chunks_with_meta: List[Dict[str, Any]], user_query: str, chat_history: Optional[List] = None) -> str:
+    """Build a prompt for the LLM with context and chat history."""
+    # Analyze the question
+    q_analysis = analyze_question(user_query)
+    
+    # Prepare context with sources
     context_parts = []
     for chunk in chunks_with_meta:
-        text = chunk.get("text", "")
+        text = chunk.get("text", "").strip()
         meta = chunk.get("metadata", {})
-        pdf_name = meta.get("pdf_name", "Unknown.pdf")
-        page_number = meta.get("page_number", "?")
-        context_parts.append(f"{text}\n(Source: {pdf_name}, Page {page_number})")
-
-    # If many chunks come from different docs, instruct the model to merge and cite
-    doc_names = { (c.get("metadata", {}) or {}).get("pdf_name", "Unknown.pdf") for c in chunks_with_meta }
-    multi_doc_note = "\n\nMultiple sources retrieved. When answering, cite each source with (Source: PDF_NAME, Page X)." if len(doc_names) > 1 else ""
-
+        source = meta.get("pdf_name", meta.get("source", "Document"))
+        page = meta.get("page_number")
+        
+        # Format the source reference
+        source_ref = f"({source}, Page {page})" if page else f"({source})"
+        
+        # Add the source reference to the text
+        if text and not text.endswith(source_ref):
+            text = f"{text} {source_ref}"
+            
+        context_parts.append(text)
+    
+    # Prepare chat history if available
     history_section = ""
     if chat_history:
-        # Include last few user/assistant turns to help with follow-ups
-        turns = []
-        for h in chat_history[-4:]:
-            if not isinstance(h, dict):
-                continue
-            # Support both 'query' and 'question' keys from history items
+        history_turns = []
+        for h in chat_history[-4:]:  # Last 4 exchanges
             q = h.get("query", h.get("question", ""))
             a = h.get("answer", "")
-            turns.append(f"User: {q}\nAssistant: {a}")
-        if turns:
-            history_section = "\n\nRecent conversation (for context):\n" + "\n\n".join(turns)
-
+            history_turns.append(f"User: {q}\nAssistant: {a}")
+        if history_turns:
+            history_section = "\n\nConversation History:\n" + "\n\n".join(history_turns)
+    
+    # Build the final prompt
     context = "\n\n".join(context_parts)
-    return f"""
-{SYSTEM_PROMPT}
+    return f"""{SYSTEM_PROMPT}
 
-Context:
+Question Analysis:
+- Type: {q_analysis['type'].title()}
+- Depth: {q_analysis['depth']}/5
+- Context Needed: {'Yes' if q_analysis['requires_context'] else 'No'}
+
+Context from Knowledge Base:
 {context}
 
-Question:
+Current Question:
 {user_query}
 {history_section}
-{multi_doc_note}
-"""
+
+Instructions:
+1. Consider the question's depth and type in your response
+2. Use the provided context when relevant
+3. The context includes source references in the format (filename, Page X)
+4. Be concise but thorough based on the question's depth"""
 
 # =========================
 # Main Answer Function
 # =========================
-def answer_query(user_query: str) -> str:
+async def answer_query(user_query: str, score_threshold: float = 0.6, chat_history: Optional[List] = None) -> str:
     """
-    Performs:
-    1. Vector search
-    2. RAG prompt creation
-    3. Gemini generation
-    """
-    try:
-        # Step 1: Retrieve chunks with metadata
-        chunks_with_meta = embed_query_and_search(user_query, k=3)
-        if not chunks_with_meta:
-            return "I'm sorry, I don't have information about that in my knowledge base."
-
-        # Step 2: Build RAG prompt
-        prompt = build_rag_prompt(chunks_with_meta, user_query)
-
-        # Step 3: Generate with Gemini
-        if generation_model is None:
-            return "Model not configured. Please set GEMINI_API_KEY."
-        resp = generation_model.generate_content(prompt)
-        return (resp.text or "").strip()
-
-    except Exception as e:
-        return f"Error generating response: {e}"
-
-
-def generate_answer_stream(prompt: str):
-    """
-    Streams Gemini response in chunks.
+    Process a user query with RAG:
+    1. Analyze the question
+    2. Retrieve relevant context
+    3. Generate a response using the LLM
     """
     try:
-        if generation_model is None:
-            yield "[Model not configured. Please set GEMINI_API_KEY.]"
-            return
-        stream = generation_model.generate_content(
-            prompt,
-            stream=True
+        # Step 1: Analyze the question
+        q_analysis = analyze_question(user_query)
+        
+        # Step 2: Retrieve relevant context with dynamic k based on question depth
+        k = min(10, 3 + q_analysis['depth'] * 2)  # More context for deeper questions
+        chunks_with_meta = embed_query_and_search(
+            user_query, 
+            k=k,
+            score_threshold=min(score_threshold, 0.3)
         )
-        for chunk in stream:
-            if chunk.candidates and chunk.candidates[0].content.parts:
-                text_part = chunk.candidates[0].content.parts[0].text
-                if text_part:
-                    yield text_part
+
+        # Step 3: Build and send prompt to LLM
+        if generation_model is None:
+            return "Error: Model not configured. Please set GEMINI_API_KEY."
+            
+        prompt = build_rag_prompt(chunks_with_meta, user_query, chat_history)
+        response = generation_model.generate_content(prompt)
+        
+        return (response.text or "I don't have enough information to answer that question.").strip()
+
     except Exception as e:
-        yield f"[Error streaming response: {e}]"
-
+        return f"Error generating response: {str(e)}"
 
 # =========================
-# Extractive Fallback
+# Streaming Answer
 # =========================
-def extractive_answer_from_chunks(user_query: str, chunks_with_meta, max_sentences: int = 4) -> str:
-    """
-    Build a concise, extractive answer from retrieved chunk texts when generation is weak.
-    Scores sentences by keyword overlap with the query (simple heuristic),
-    then returns the top few as a coherent snippet.
-    """
+async def generate_answer_stream(prompt: str):
+    """Generate a streaming response from the LLM."""
+    try:
+        if generation_model is None:
+            yield "Error: Model not configured. Please set GEMINI_API_KEY."
+            return
+            
+        response = generation_model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if hasattr(chunk, 'text') and chunk.text:
+                yield chunk.text
+    except Exception as e:
+        yield f"Error in streaming response: {str(e)}"
+
+def extractive_answer_from_chunks(user_query: str, chunks_with_meta: List[Dict[str, Any]], max_sentences: int = 4) -> str:
+    """Fallback: Build a concise answer directly from retrieved chunks."""
     if not chunks_with_meta:
-        return ""
-
-    def normalize(s: str) -> str:
-        return re.sub(r"[^a-z0-9\s]", " ", (s or "").lower())
-
-    q_tokens = [t for t in normalize(user_query).split() if len(t) >= 3]
-    if not q_tokens:
-        return ""
-
-    # Split chunk texts into sentences and score
-    candidates = []  # (score, sentence, meta)
-    for c in chunks_with_meta:
-        text = c.get("text", "") if isinstance(c, dict) else ""
-        meta = c.get("metadata", {}) if isinstance(c, dict) else {}
-        # Rough sentence split
-        sentences = re.split(r"(?<=[\.!?])\s+", text)
-        for s in sentences:
-            s_norm = normalize(s)
-            if len(s_norm) < 20:
-                continue
-            score = sum(1 for t in q_tokens if t in s_norm)
-            if score > 0:
-                candidates.append((score, s.strip(), meta))
-
-    if not candidates:
-        return ""
-
-    # Sort by score (desc) and keep unique-ish sentences
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    picked = []
-    seen = set()
-    for _, sent, _ in candidates:
-        key = sent.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        picked.append(sent)
-        if len(picked) >= max_sentences:
-            break
-
-    if not picked:
-        return ""
-
-    return "\n".join(f"- {s}" for s in picked)
+        return "I couldn't find relevant information to answer your question."
+        
+    # Simple extractive QA - just return the most relevant chunk
+    best_chunk = max(chunks_with_meta, key=lambda x: x.get('score', 0))
+    return best_chunk.get('text', 'No relevant information found.')

@@ -130,6 +130,8 @@ const ChatbotInterface = () => {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  // Upload options modal (renders FileUploadArea with two choices)
+  const [showUploadArea, setShowUploadArea] = useState(false);
 
   // Custom hooks
   const { user, isAuthenticated, isLoading: authLoading, setDomainFilter } = useAuth();
@@ -138,7 +140,7 @@ const ChatbotInterface = () => {
     onChatComplete: refreshHistory 
   });
   
-  const { uploadedFiles, isUploading, deleteFile, handleFileUpload } = useFileManagement();
+  const { uploadedFiles, isUploading, deleteFile, handleFileUpload, setUploadedFiles } = useFileManagement();
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,7 +193,8 @@ const ChatbotInterface = () => {
       handleShowAuth('login');
       return;
     }
-    fileInputRef.current?.click();
+    // Open the two-option UI instead of directly opening the file picker
+    setShowUploadArea(true);
   };
 
   const handleHistoryMessageSelect = (historyMessage: HistoryMessage) => {
@@ -246,7 +249,7 @@ const ChatbotInterface = () => {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              Tech Support Bot
+              ChatBot
             </h1>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -521,6 +524,28 @@ const ChatbotInterface = () => {
             onClose={() => setShowHistoryPanel(false)}
             onSelectMessage={handleHistoryMessageSelect}
           />
+          {/* Upload Options Modal showing two choices (Upload file / Paste URL) */}
+          {showUploadArea && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="absolute inset-0 bg-black/40" onClick={() => setShowUploadArea(false)} />
+    <div className="relative bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-800">Upload Options</h3>
+        <button onClick={() => setShowUploadArea(false)} className="text-gray-500 hover:text-gray-700">
+          <X size={18} />
+        </button>
+      </div>
+                <FileUploadArea
+                  onFileUploaded={(file, message) => {
+                    // Add uploaded PDF or ingested URL to sidebar list
+                    setUploadedFiles(prev => [...prev, file]);
+                    handleFileUploadSuccess(file, message);
+                    setShowUploadArea(false);
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

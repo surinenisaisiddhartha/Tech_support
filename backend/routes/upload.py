@@ -1,13 +1,13 @@
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse
-from models.schemas import UploadResponse
+from models.schemas import UploadResponse, UrlIngestRequest, UrlIngestResponse
 from services.file_handler import save_uploaded_file
 from services.pdf_parser import extract_text_by_page
-from services.embedder import page_texts_to_chunks, embed_chunks_with_metadata
+from services.embedder import page_texts_to_chunks, embed_chunks_with_metadata, web_text_to_chunks
 from routes.auth import get_current_user
 from fastapi import Depends
-from services.rag_pipeline import classify_pdf_is_techsupport
 from services.summarizer import generate_summary
+from services.web_scraper import fetch_and_extract
 
 router = APIRouter()
 
@@ -27,18 +27,8 @@ async def upload_file(file: UploadFile = File(...), current_user = Depends(get_c
         if not any(text.strip() for _, text in page_texts):
             return JSONResponse(status_code=400, content={"error": "Uploaded PDF is empty or unreadable."})
 
-        # 4. Validate PDF is tech support related
+        # 4. Build full text for summary
         full_text = " ".join(text for _, text in page_texts if text.strip())
-        
-        is_tech_support = classify_pdf_is_techsupport(full_text)
-        if not is_tech_support:
-            return JSONResponse(
-                status_code=400, 
-                content={
-                    "error": "This PDF does not appear to be related to tech support, troubleshooting, software, or hardware issues. Please upload only tech support related documents.",
-                    "type": "domain_validation_error"
-                }
-            )
 
         # 5. Generate summary from all text
         summary = generate_summary(full_text)
@@ -46,8 +36,7 @@ async def upload_file(file: UploadFile = File(...), current_user = Depends(get_c
         # 6. Convert page texts to chunk dictionaries with metadata
         chunks_with_meta = page_texts_to_chunks(
             page_texts=page_texts,
-            pdf_name=file.filename,
-            domain="techsupport"  # ✅ Tag all uploaded PDFs as techsupport
+            pdf_name=file.filename
         )
 
         # 7. Add chunks to FAISS & store metadata
@@ -56,5 +45,35 @@ async def upload_file(file: UploadFile = File(...), current_user = Depends(get_c
         # 8. Return filename + summary
         return {"filename": file.filename, "summary": summary}
 
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.post("/upload/url", response_model=UrlIngestResponse)
+async def upload_url(body: UrlIngestRequest, current_user = Depends(get_current_user)):
+    """Ingest a web page by URL, extract main text, summarize, chunk and store in Qdrant."""
+    try:
+        url = body.url.strip()
+        if not url:
+            return JSONResponse(status_code=400, content={"error": "URL is required."})
+
+        # 1) Fetch and extract readable text + title
+        extracted = await fetch_and_extract(url)
+        text = (extracted.get("text") or "").strip()
+        title = extracted.get("title")
+
+        if not text:
+            return JSONResponse(status_code=400, content={"error": "Could not extract readable content from URL."})
+
+        # 2) Summarize full text
+        summary = generate_summary(text)
+
+        # 3) Chunk like PDFs but with URL metadata
+        chunks_with_meta = web_text_to_chunks(text=text, url=url, title=title)
+
+        # 4) Embed + store
+        embed_chunks_with_metadata(chunks_with_meta)
+
+        # 5) Return response
+        return UrlIngestResponse(url=url, title=title, summary=summary)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

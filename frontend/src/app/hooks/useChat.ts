@@ -10,7 +10,7 @@ export function useChat(options?: { onChatComplete?: () => void }) {
     {
       id: "1",
       type: "assistant",
-      content: "Hello! I'm your Tech Support Bot. Upload documents for troubleshooting guides or ask questions related to tech support.",
+      content: "Hello! I'm here to help. You can upload documents or ask me anything.",
       timestamp: new Date(),
     },
   ]);
@@ -139,7 +139,7 @@ export function useChat(options?: { onChatComplete?: () => void }) {
       {
         id: "1",
         type: "assistant",
-        content: "Hello! I'm your Tech Support Bot. Upload documents for troubleshooting guides or ask questions related to tech support.",
+        content: "Hello! I'm here to help. You can upload documents or ask me anything.",
         timestamp: new Date(),
       },
     ]);

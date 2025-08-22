@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 from routes import upload, chat, reset, delete_file
 from services.embedder import load_vector_store
 from routes.auth import router as auth_router
@@ -9,10 +10,9 @@ from routes.chat import router as chat_router
 app = FastAPI()
 
 # CORS
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# Allow configuring CORS origins via env var (comma-separated), with local defaults
+cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://192.168.0.50:3000")
+origins = [o.strip() for o in cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

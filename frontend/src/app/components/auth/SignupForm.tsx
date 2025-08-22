@@ -52,7 +52,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({ onSuccess, onSwitchToLog
     <div className="bg-white rounded-lg shadow-xl p-6 w-full">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-          Join Tech Support Bot
+          Join ChatBot
         </h2>
         <p className="text-gray-600 mt-2">Create your account to get started</p>
       </div>

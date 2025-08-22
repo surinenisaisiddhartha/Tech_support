@@ -20,6 +20,13 @@ export const chatApi = {
     );
   },
 
+  async uploadUrl(url: string): Promise<{ url: string; title?: string; summary: string }>{
+    return apiClient.post(
+      API_CONFIG.ENDPOINTS.FILES.UPLOAD_URL,
+      { url }
+    );
+  },
+
   async processStreamResponse(stream: ReadableStream<Uint8Array>): Promise<string> {
     const reader = stream.getReader();
     const decoder = new TextDecoder();

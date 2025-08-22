@@ -13,6 +13,13 @@ export const fileApi = {
     );
   },
 
+  async uploadUrl(url: string): Promise<{ url: string; title?: string; summary: string }>{
+    return apiClient.post(
+      API_CONFIG.ENDPOINTS.FILES.UPLOAD_URL,
+      { url }
+    );
+  },
+
   async deleteFile(filename: string): Promise<{ success: boolean; message: string }> {
     const encodedFilename = encodeURIComponent(filename);
     return apiClient.delete<{ success: boolean; message: string }>(

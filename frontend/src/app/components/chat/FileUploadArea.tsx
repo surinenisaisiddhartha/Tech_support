@@ -2,10 +2,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, File, X, Loader, AlertCircle, Check } from 'lucide-react';
+import { Upload, File, X, Loader, AlertCircle, Check, Link2 } from 'lucide-react';
 import { useFileManagement } from '../../hooks/useFileManagement';
 import { UploadedFile, Message } from '../../types';
-import { ErrorModal } from '../ui/ErrorModal';
+import { fileApi } from '../../lib/fileApi';
 
 interface FileUploadAreaProps {
   onFileUploaded?: (file: UploadedFile, message?: Message) => void;
@@ -16,32 +16,21 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
   const { isUploading, uploadError, clearErrors, handleFileUpload } = useFileManagement();
   const [dragActive, setDragActive] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const [showErrorModal, setShowErrorModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if the error is a domain validation error
-  const isDomainError = uploadError && (
-    uploadError.includes('tech support') || 
-    uploadError.includes('troubleshooting') ||
-    uploadError.includes('software') ||
-    uploadError.includes('hardware')
-  );
+  // URL modal state
+  const [showUrlModal, setShowUrlModal] = useState(false);
+  const [urlValue, setUrlValue] = useState('');
+  const [isUrlUploading, setIsUrlUploading] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [urlSuccess, setUrlSuccess] = useState<string | null>(null);
+
+  // Domain validation popups disabled; treat all errors uniformly
+  const isDomainError = false;
   
-  // Show modal for domain validation errors, banner for other errors
-  const shouldShowModal = isDomainError && uploadError;
-  const shouldShowBanner = uploadError && !isDomainError;
-
-  // Show modal when there's a domain validation error
-  useEffect(() => {
-    if (shouldShowModal) {
-      setShowErrorModal(true);
-    }
-  }, [shouldShowModal]);
-
-  const handleCloseErrorModal = () => {
-    setShowErrorModal(false);
-    clearErrors();
-  };
+  // Always show a lightweight banner for any error
+  const shouldShowModal = false;
+  const shouldShowBanner = !!uploadError || !!urlError;
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -105,9 +94,59 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
     }
   };
 
-  const handleButtonClick = () => {
+  const handleFileButtonClick = () => {
     if (disabled) return;
     fileInputRef.current?.click();
+  };
+
+  const openUrlModal = () => {
+    if (disabled) return;
+    setUrlError(null);
+    setUrlSuccess(null);
+    setUrlValue('');
+    setShowUrlModal(true);
+  };
+
+  const closeUrlModal = () => {
+    setShowUrlModal(false);
+  };
+
+  const handleUrlUpload = async () => {
+    if (!urlValue.trim()) {
+      setUrlError('Please enter a valid URL');
+      return;
+    }
+    try {
+      setIsUrlUploading(true);
+      setUrlError(null);
+      const res = await fileApi.uploadUrl(urlValue.trim());
+      setUrlSuccess(`URL ingested: ${res.title || res.url}`);
+      // Optionally push a summary message to chat via onFileUploaded-like callback
+      if (onFileUploaded) {
+        const pseudoFile: UploadedFile = {
+          id: Date.now().toString(),
+          name: res.title || res.url,
+          summary: res.summary,
+          uploadTime: new Date(),
+        };
+        const msg: Message = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: `🔗 ${res.title || res.url} ingested successfully!\n\nSummary:\n${res.summary}`,
+          timestamp: new Date(),
+        };
+        onFileUploaded(pseudoFile, msg);
+      }
+      // Close after short delay
+      setTimeout(() => {
+        setShowUrlModal(false);
+        setUrlSuccess(null);
+      }, 1200);
+    } catch (e: any) {
+      setUrlError(e?.message || 'Failed to ingest URL');
+    } finally {
+      setIsUrlUploading(false);
+    }
   };
 
   return (
@@ -116,7 +155,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
       {shouldShowBanner && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
           <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
-          <span className="text-sm text-red-700 flex-1">{uploadError}</span>
+          <span className="text-sm text-red-700 flex-1">{uploadError || urlError}</span>
           <button
             onClick={clearErrors}
             className="text-red-600 hover:text-red-700"
@@ -147,7 +186,6 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        onClick={handleButtonClick}
       >
         <input
           ref={fileInputRef}
@@ -169,39 +207,49 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
             </>
           ) : (
             <>
-              <div className={`p-3 rounded-full ${
-                disabled ? 'bg-gray-200' : 'bg-purple-100'
-              }`}>
-                {dragActive ? (
-                  <Upload size={24} className="text-purple-600" />
-                ) : (
-                  <File size={24} className={disabled ? 'text-gray-400' : 'text-purple-600'} />
-                )}
-              </div>
-              
-              <div>
-                <p className={`text-sm font-medium ${
-                  disabled ? 'text-gray-400' : 'text-gray-700'
-                }`}>
-                  {dragActive 
-                    ? 'Drop your PDF here'
-                    : 'Upload PDF Document'
-                  }
-                </p>
-                <p className={`text-xs ${
-                  disabled ? 'text-gray-300' : 'text-gray-500'
-                } mt-1`}>
-                  Drag and drop or click to browse
-                </p>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                {/* Upload file card */}
+                <button
+                  type="button"
+                  onClick={handleFileButtonClick}
+                  disabled={disabled}
+                  className={`flex flex-col items-center justify-center gap-2 border rounded-lg p-4 transition ${disabled ? 'bg-gray-50 border-gray-200 text-gray-400' : 'hover:border-purple-400 hover:bg-purple-50 border-gray-200'}`}
+                >
+                  <div className={`p-3 rounded-full ${disabled ? 'bg-gray-200' : 'bg-purple-100'}`}>
+                    <File size={24} className={disabled ? 'text-gray-400' : 'text-purple-600'} />
+                  </div>
+                  <span className="text-sm font-medium">Upload file</span>
+                  <span className="text-xs text-gray-500">PDF only</span>
+                </button>
 
-              {!disabled && (
-                <div className="flex items-center gap-4 text-xs text-gray-400">
-                  <span>PDF files only</span>
-                  <span>•</span>
-                  <span>Max 50MB</span>
-                </div>
-              )}
+                {/* Paste URL card */}
+                <button
+                  type="button"
+                  onClick={openUrlModal}
+                  disabled={disabled}
+                  className={`flex flex-col items-center justify-center gap-2 border rounded-lg p-4 transition ${disabled ? 'bg-gray-50 border-gray-200 text-gray-400' : 'hover:border-purple-400 hover:bg-purple-50 border-gray-200'}`}
+                >
+                  <div className={`p-3 rounded-full ${disabled ? 'bg-gray-200' : 'bg-purple-100'}`}>
+                    <Link2 size={24} className={disabled ? 'text-gray-400' : 'text-purple-600'} />
+                  </div>
+                  <span className="text-sm font-medium">Paste URL</span>
+                  <span className="text-xs text-gray-500">Scrape and ingest</span>
+                </button>
+              </div>
+               
+               <div>
+                <p className={`text-xs ${disabled ? 'text-gray-300' : 'text-gray-500'} mt-2`}>
+                  Drag and drop a PDF anywhere in this area, or choose an option above
+                </p>
+               </div>
+
+               {!disabled && (
+                 <div className="flex items-center gap-4 text-xs text-gray-400">
+                   <span>PDF files only</span>
+                   <span>•</span>
+                   <span>Max 50MB</span>
+                 </div>
+               )}
             </>
           )}
         </div>
@@ -229,14 +277,50 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileUploaded, disable
         </div>
       )}
 
-      {/* Error Modal for Domain Validation */}
-      <ErrorModal
-        isOpen={showErrorModal}
-        onClose={handleCloseErrorModal}
-        title="Invalid Document Type"
-        message={uploadError || ""}
-        type="warning"
-      />
+      {/* Floating URL Modal */}
+      {showUrlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={closeUrlModal} />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-800">Paste URL</h3>
+              <button onClick={closeUrlModal} className="text-gray-500 hover:text-gray-700">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <input
+                type="url"
+                placeholder="https://example.com/article"
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+              <button
+                type="button"
+                onClick={handleUrlUpload}
+                disabled={isUrlUploading}
+                className={`w-full inline-flex items-center justify-center gap-2 text-sm font-medium rounded-md px-3 py-2 ${isUrlUploading ? 'bg-purple-300' : 'bg-purple-600 hover:bg-purple-700'} text-white`}
+              >
+                {isUrlUploading ? <Loader size={16} className="animate-spin" /> : <Link2 size={16} />}
+                {isUrlUploading ? 'Uploading...' : 'No Upload'}
+              </button>
+              {urlSuccess && (
+                <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded">
+                  <Check size={14} className="text-green-600" />
+                  <span className="text-xs text-green-700">{urlSuccess}</span>
+                </div>
+              )}
+              {urlError && (
+                <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded">
+                  <AlertCircle size={14} className="text-red-600" />
+                  <span className="text-xs text-red-700">{urlError}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -51,16 +51,16 @@ async def ask(payload: ChatRequest, current_user=Depends(get_current_user)):
         r"hello there\s*",
     ]
     if any(re.fullmatch(p, normalized) for p in greeting_patterns):
-        greeting = "Hello! I'm your tech support assistant. How can I help you with any software or hardware issues today?"
+        greeting = "Hello! How can I help you today?"
         async def streamer_greet():
             yield greeting
             await save_chat_message(current_user["id"], question, greeting, {"type": "meta_greeting"})
         return StreamingResponse(streamer_greet(), media_type="text/event-stream")
 
-    # Retrieve relevant chunks (restrict to techsupport domain to avoid legacy, non-cited data)
-    chunks = embed_query_and_search(question, k=3, require_domain="techsupport")
+    # Retrieve relevant chunks with a slightly lower threshold and higher k to improve recall
+    chunks = embed_query_and_search(question, k=8, score_threshold=0.3)
     if not chunks:
-        answer = "I'm sorry, I don't have information about that in my knowledge base."
+        answer = "I couldn't find relevant information to answer your question."
         async def streamer():
             yield answer
             await save_chat_message(
@@ -76,88 +76,45 @@ async def ask(payload: ChatRequest, current_user=Depends(get_current_user)):
     # Stream answer back to client
     async def streamer():
         full_text = ""
-        for part in generate_answer_stream(prompt):
+        async for part in generate_answer_stream(prompt):
             full_text += part
             yield part
-        # Decide whether to append citations based on the model's response content
+            
         try:
-            allow_citations = True
             txt = (full_text or "").strip()
             lower_txt = txt.lower()
             non_answer_patterns = [
                 "i'm sorry, i don't have information",
-                "i'm sorry, i don't have information about that",
+                "i couldn't find relevant information",
                 "model not configured",
-                "error streaming response",
-                "i'm a tech support assistant",
-                "i'm your tech support assistant",
-                "hello! i'm your tech support assistant",
+                "error streaming response"
             ]
-            # Detect greeting-like answers from the model (when the user didn't ask a greeting)
-            greeting_like = False
-            if re.fullmatch(r"\s*(hi|hello|hey)(\s+there)?[!.]*\s*", lower_txt):
-                greeting_like = True
-
+            
             non_answer = (
                 not txt
                 or len(txt) < 30
                 or any(p in lower_txt for p in non_answer_patterns)
-                or greeting_like
             )
+            
             if non_answer:
-                allow_citations = False
-
-            if allow_citations:
-                citations = []
-                seen = set()
-                for c in chunks:
-                    meta = c.get("metadata", {}) if isinstance(c, dict) else {}
-                    pdf_name = meta.get("pdf_name", "Unknown.pdf")
-                    page_number = meta.get("page_number", "?")
-                    key = (pdf_name, page_number)
-                    if key not in seen:
-                        seen.add(key)
-                        citations.append(f"- {pdf_name}, Page {page_number}")
-                if citations:
-                    sources_block = "\n\nSources:\n" + "\n".join(citations)
-                    full_text += sources_block
-                    yield sources_block
-            # If model output was weak, attempt an extractive fallback using retrieved chunks
-            if non_answer:
-                extracted = extractive_answer_from_chunks(question, chunks, max_sentences=5)
-                if extracted:
-                    # Build a concise extractive answer and then append citations
-                    header = "Here's what I found related to your question:\n"
-                    full_text = header + extracted
-                    yield header
-                    for line in extracted.splitlines():
-                        yield line + "\n"
-                    # Append citations for transparency
-                    citations = []
-                    seen = set()
-                    for c in chunks:
-                        meta = c.get("metadata", {}) if isinstance(c, dict) else {}
-                        pdf_name = meta.get("pdf_name", "Unknown.pdf")
-                        page_number = meta.get("page_number", "?")
-                        key = (pdf_name, page_number)
-                        if key not in seen:
-                            seen.add(key)
-                            citations.append(f"- {pdf_name}, Page {page_number}")
-                    if citations:
-                        sources_block = "\nSources:\n" + "\n".join(citations)
-                        full_text += sources_block
-                        yield sources_block
-                else:
-                    # Fallback informative message if extraction fails
-                    fallback = "I found related sources but couldn't generate a direct answer. Please try rephrasing your question to be more specific (e.g., include device, OS, and the exact issue)."
-                    full_text = fallback
-                    yield fallback
-        except Exception:
-            # If anything goes wrong building citations, continue without blocking the response
-            pass
+                # Skip saving if it's a non-answer
+                return
+                
+        except Exception as e:
+            print(f"Error in streamer: {e}")
+            return
+            
+        # Save the chat message with the full context
         await save_chat_message(
-            current_user["id"], question, full_text,
-            {"retrieved": chunks}
+            current_user["id"], 
+            question, 
+            full_text,
+            {"retrieved": [
+                {
+                    "page_content": c.get("page_content", ""), 
+                    "metadata": c.get("metadata", {})
+                } for c in chunks
+            ]} if chunks else {"retrieved": []}
         )
-
+        
     return StreamingResponse(streamer(), media_type="text/event-stream")

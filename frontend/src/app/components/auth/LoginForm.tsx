@@ -35,7 +35,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToSignu
         <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
           Welcome Back
         </h2>
-        <p className="text-gray-600 mt-2">Sign in to your Tech Support Bot account</p>
+        <p className="text-gray-600 mt-2">Sign in to your chatbot account</p>
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-4">

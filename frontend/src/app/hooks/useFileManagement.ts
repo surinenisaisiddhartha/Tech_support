@@ -47,26 +47,9 @@ export function useFileManagement() {
       return newFile;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload file';
-      
-      // Check if it's a domain validation error using the metadata from apiClient
-      const isDomainError = (error as any).isDomainValidationError || 
-                           errorMessage.includes('tech support') || 
-                           errorMessage.includes('troubleshooting') ||
-                           errorMessage.includes('software') ||
-                           errorMessage.includes('hardware');
-      
-      if (isDomainError) {
-        // Show popup for domain validation errors
-        alert(`❌ Upload Failed - Invalid Document Type\n\n${errorMessage}\n\nPlease upload only:\n• Technical documentation\n• Troubleshooting guides\n• Software manuals\n• Hardware documentation\n• User manuals for tech products`);
-        
-        // Set error but don't throw for domain validation errors
-        setUploadError(errorMessage);
-        return null; // Return null instead of throwing
-      } else {
-        // For other errors, set error and throw
-        setUploadError(errorMessage);
-        throw new Error(errorMessage);
-      }
+      // Always set error and return null; no popup alerts
+      setUploadError(errorMessage);
+      return null;
     } finally {
       setIsUploading(false);
     }

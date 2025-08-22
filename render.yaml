@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: chatbot-app
+    env: docker
+    rootDir: .
+    region: oregon
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: /api
+      - key: CORS_ORIGINS
+        value: "*"

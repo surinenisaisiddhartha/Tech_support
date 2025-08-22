@@ -1,7 +1,7 @@
 // frontend/src/app/lib/config.ts
 
 export const API_CONFIG = {
-  // ✅ Default to FastAPI backend if no env var is set
+  // Default to FastAPI backend if no env var is set
   BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
 
   ENDPOINTS: {
@@ -23,6 +23,7 @@ export const API_CONFIG = {
     // File endpoints
     FILES: {
       UPLOAD: "/upload",
+      UPLOAD_URL: "/upload/url",
       DELETE: "/delete",
       RESET: "/reset",
     },

@@ -11,8 +11,12 @@ scikit-learn           # 🧪 Optional but useful for similarity metrics
 motor
 passlib[bcrypt]
 python-jose[cryptography]
-python-dotenv
+python-dotenv          # 🔑 For reading .env
 pydantic
 qdrant-client          # 🌐 Qdrant vector DB client
 Pillow                 # 🖼️ Image handling for OCR
 pytesseract            # 🔤 Tesseract OCR Python bindings
+requests
+beautifulsoup4
+lxml
+anyio
