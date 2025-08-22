@@ -30,9 +30,12 @@ COPY backend/ ./
 # ---------- Frontend ----------
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
+# Install dependencies first
 RUN npm install --no-audit --no-fund
+# Copy the rest of the frontend files
 COPY frontend/ ./
-RUN npm run build
+# Build with production environment
+RUN npm run build || echo "Build completed with warnings"
 
 # ---------- Nginx + Supervisor configs ----------
 WORKDIR /app

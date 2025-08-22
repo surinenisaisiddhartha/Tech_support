@@ -1,0 +1,23 @@
+# Ignore all files by default
+*.*
+
+# Allow specific file types
+!*.ts
+!*.tsx
+!*.js
+!*.jsx
+
+# Ignore specific directories
+**/node_modules/**
+**/.next/**
+**/out/**
+**/build/**
+
+# Ignore specific files
+next-env.d.ts
+next.config.js
+
+# Ignore build artifacts
+.next/
+out/
+build/
