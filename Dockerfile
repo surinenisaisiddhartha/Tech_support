@@ -5,17 +5,26 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install Python, pip, Tesseract OCR, Nginx, Supervisor, envsubst
+# Install system dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       python3 python3-pip python3-venv \
+       python3 \
+       python3-pip \
+       python3-venv \
        tesseract-ocr \
+       tesseract-ocr-eng \
        nginx \
        supervisor \
        gettext-base \
        ca-certificates \
        build-essential \
-       libglib2.0-0 libsm6 libxext6 libxrender1 \
+       libglib2.0-0 \
+       libsm6 \
+       libxext6 \
+       libxrender1 \
+       libtesseract-dev \
+       libleptonica-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directories
@@ -34,8 +43,13 @@ COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
 # Copy the rest of the frontend files
 COPY frontend/ ./
+# Set production environment for Next.js
+ENV NODE_ENV=production
 # Build with production environment
-RUN npm run build || echo "Build completed with warnings"
+RUN npm run build
+# Ensure .next directory exists
+RUN mkdir -p .next/standalone
+RUN cp -r .next/static .next/standalone/.next/ || true
 
 # ---------- Nginx + Supervisor configs ----------
 WORKDIR /app

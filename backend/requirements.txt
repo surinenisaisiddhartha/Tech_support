@@ -20,3 +20,4 @@ requests
 beautifulsoup4
 lxml
 anyio
+email-validator>=2.0.0  # For Pydantic email validation
