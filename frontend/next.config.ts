@@ -23,7 +23,16 @@ const nextConfig: NextConfig = {
         },
       ],
     });
+    // Disable webpack's cache to prevent memory issues
+    config.cache = false;
+    
+    // Important: return the modified config
     return config;
+  },
+  productionBrowserSourceMaps: false, // Disable source maps in production to reduce memory usage
+  reactStrictMode: false, // Disable React Strict Mode for now to prevent double rendering
+  images: {
+    unoptimized: true, // Disable image optimization if not needed
   },
   async rewrites() {
     return [

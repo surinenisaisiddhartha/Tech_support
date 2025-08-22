@@ -38,18 +38,29 @@ COPY backend/ ./
 
 # ---------- Frontend ----------
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
+
 # Install dependencies first
+COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
+
 # Copy the rest of the frontend files
 COPY frontend/ ./
+
 # Set production environment for Next.js
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install additional build dependencies if needed
+RUN npm install --no-audit --no-fund next@latest
+
 # Build with production environment
-RUN npm run build
-# Ensure .next directory exists
-RUN mkdir -p .next/standalone
-RUN cp -r .next/static .next/standalone/.next/ || true
+RUN npm run build --debug || (cat .next/debug* 2>/dev/null || echo "No debug logs found"; exit 1)
+
+# Create necessary directories for standalone output
+RUN mkdir -p .next/standalone/.next
+RUN cp -r .next/static .next/standalone/.next/static || true
+RUN cp -r public .next/standalone/ || true
+RUN cp -r .next/standalone/.next/static .next/standalone/static || true
 
 # ---------- Nginx + Supervisor configs ----------
 WORKDIR /app
