@@ -48,7 +48,7 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
     PYTHONPATH=/app \
     PYTHONIOENCODING=utf-8 \
-    TORCH_CUDA_VERSION=None  # Ensure we're using CPU-only version
+    TORCH_CUDA_VERSION=None
 
 # Verify PyTorch installation
 RUN python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
