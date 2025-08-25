@@ -9,9 +9,8 @@ RUN apt-get update && \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements files
+# Copy requirements file
 COPY backend/requirements.txt .
-COPY backend/requirements-builder.txt .
 
 # Create virtual environment and install dependencies
 RUN python -m venv /opt/venv
@@ -21,7 +20,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir \
     -r requirements.txt \
-    -r requirements-builder.txt \
     --use-deprecated=legacy-resolver
 
 # Production stage
@@ -36,7 +34,7 @@ RUN apt-get update && \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only the virtual environment from builder
+# Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
