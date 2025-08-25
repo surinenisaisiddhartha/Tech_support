@@ -1,43 +1,53 @@
-# Core
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.20
-python-dotenv==1.0.0
-pydantic==2.1.1
+# Use a smaller base image
+FROM python:3.9-slim as builder
 
-# Google AI
-google-generativeai==0.8.5
-google-auth==2.40.3
-protobuf==4.25.5
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TORCH_CUDA_VERSION=None
 
-# Database
-motor==3.3.1
-dnspython==2.7.0
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# ML & Embeddings (CPU only)
-torch==2.1.2
-sentence-transformers==2.2.2
-transformers==4.31.0
-tokenizers==0.13.3
-numpy==1.24.3
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Vector Database
-qdrant-client==1.15.1
+# Install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# PDF Processing
-pymupdf==1.23.5
-pytesseract==0.3.13
-Pillow==10.2.0
+# Final stage
+FROM python:3.9-slim
 
-# Web Scraping
-beautifulsoup4==4.12.2
-lxml==4.9.3
-requests==2.31.0
+# Install system dependencies for PyMuPDF and Tesseract
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 
-# Authentication
-python-jose==3.3.0
-passlib==1.7.4
-bcrypt==4.0.1
+# Copy only the virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Utilities
-typing-extensions==4.5.0
+# Set working directory
+WORKDIR /app
+COPY backend/ .
+
+# Set environment variables
+ENV PORT=8000 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    TORCH_CUDA_VERSION=None \
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+
+# Expose port
+EXPOSE 8000
+
+# Command to run the application with 1 worker to reduce memory usage
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "10", "--timeout-keep-alive", "30"]
