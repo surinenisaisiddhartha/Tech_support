@@ -1,58 +1,52 @@
-# Builder stage for compiling dependencies
+# Use a smaller base image
 FROM python:3.9-slim as builder
 
-WORKDIR /app
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TORCH_CUDA_VERSION=None
 
-# Install build dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY backend/requirements.txt .
-
-# Create virtual environment and install dependencies
+# Create and activate virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
+COPY backend/requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir \
-    -r requirements.txt \
-    --use-deprecated=legacy-resolver
+    pip install --no-cache-dir -r requirements.txt
 
-# Production stage
+# Final stage
 FROM python:3.9-slim
 
-WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    libgomp1 \
+# Install system dependencies for PyMuPDF and Tesseract
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment from builder
+# Copy only the virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code
+# Set working directory
+WORKDIR /app
 COPY backend/ .
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PORT=8000 \
+ENV PORT=8000 \
+    PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PYTHONIOENCODING=utf-8 \
     TORCH_CUDA_VERSION=None
-
-# Verify PyTorch installation
-RUN python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 # Expose port
 EXPOSE 8000
 
-# Run the application
+# Command to run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
