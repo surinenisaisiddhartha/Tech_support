@@ -12,8 +12,12 @@ RUN apt-get update && \
 # Install Python dependencies
 COPY backend/requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --prefix=/install -r requirements.txt --use-deprecated=legacy-resolver
+    pip install --no-cache-dir --prefix=/install \
+    -r requirements.txt \
+    --use-deprecated=legacy-resolver && \
+    pip install --no-cache-dir --prefix=/install \
+    torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
+    --index-url https://download.pytorch.org/whl/cpu
 
 # Production stage
 FROM python:3.9-slim
@@ -29,6 +33,9 @@ RUN apt-get update && \
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
+
+# Ensure typing-extensions is installed in the final image
+RUN pip install --no-cache-dir typing-extensions>=4.0.0
 
 # Copy application code
 COPY backend/ .
