@@ -34,8 +34,10 @@ RUN apt-get update && \
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Ensure typing-extensions is installed in the final image
-RUN pip install --no-cache-dir typing-extensions>=4.0.0
+# Ensure required packages are installed in the final image
+RUN pip install --no-cache-dir \
+    typing-extensions>=4.0.0 \
+    email-validator>=2.1.0
 
 # Copy application code
 COPY backend/ .
