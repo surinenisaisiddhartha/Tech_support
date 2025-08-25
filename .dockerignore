@@ -1,52 +1,38 @@
-# Node modules
-node_modules
-npm-debug.log
-
-# Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-env
-venv
-ENV
-
-# Build files
-.next
-build
-dist
-
-# Environment variables
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Local development
-.dockerignore
+# General
 .git
 .gitignore
+.vscode
+*.log
+*.md
+*.pdf
+*.csv
+*.xlsx
+*.xls
+*.doc
+*.docx
+*.pyc
+__pycache__
+.pytest_cache
+.coverage
+*.egg-info
+.DS_Store
+.env
+.env.*
+!.env.example
 
-# Docker
-Dockerfile
-docker-compose*.yml
-.docker
+# Python
+venv/
+env/
+.python-version
+.pytest_cache/
+*.py[cod]
+*$py.class
+
+# Node.js
+node_modules/
+.next/
+out/
+dist/
+.npm
+.eslintcache
+.yarn-integrity

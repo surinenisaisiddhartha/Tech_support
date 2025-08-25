@@ -5,19 +5,15 @@ python-multipart
 google-generativeai
 sentence-transformers
 pymupdf
-python-dotenv          # 🔑 For reading .env
-numpy                  # 📐 Required for FAISS/vector math
-scikit-learn           # 🧪 Optional but useful for similarity metrics
+python-dotenv
+numpy
+scikit-learn
 motor
 passlib[bcrypt]
 python-jose[cryptography]
-python-dotenv          # 🔑 For reading .env
-pydantic
-qdrant-client          # 🌐 Qdrant vector DB client
-Pillow                 # 🖼️ Image handling for OCR
-pytesseract            # 🔤 Tesseract OCR Python bindings
+qdrant-client
+Pillow
+pytesseract
 requests
 beautifulsoup4
 lxml
-anyio
-email-validator>=2.0.0  # For Pydantic email validation
