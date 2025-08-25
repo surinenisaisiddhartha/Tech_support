@@ -1,4 +1,4 @@
-# Builder stage
+# Builder stage for compiling dependencies
 FROM python:3.9-slim as builder
 
 WORKDIR /app
@@ -13,9 +13,13 @@ RUN apt-get update && \
 COPY backend/requirements.txt .
 COPY backend/requirements-builder.txt .
 
+# Create virtual environment and install dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install \
+    pip install --no-cache-dir \
     -r requirements.txt \
     -r requirements-builder.txt \
     --use-deprecated=legacy-resolver
@@ -32,16 +36,9 @@ RUN apt-get update && \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
-
-# Copy requirements for final install
-COPY backend/requirements.txt .
-
-# Install only the required packages in the final image
-RUN pip install --no-cache-dir \
-    -r requirements.txt \
-    --use-deprecated=legacy-resolver
+# Copy only the virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY backend/ .
@@ -50,7 +47,11 @@ COPY backend/ .
 ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
     PYTHONPATH=/app \
-    PYTHONIOENCODING=utf-8
+    PYTHONIOENCODING=utf-8 \
+    TORCH_CUDA_VERSION=None  # Ensure we're using CPU-only version
+
+# Verify PyTorch installation
+RUN python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 # Expose port
 EXPOSE 8000
