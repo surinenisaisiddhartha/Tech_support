@@ -43,10 +43,11 @@ COPY backend/ .
 ENV PORT=8000 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    TORCH_CUDA_VERSION=None
+    TORCH_CUDA_VERSION=None \
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 
 # Expose port
 EXPOSE 8000
 
-# Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Command to run the application with 1 worker to reduce memory usage
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "10", "--timeout-keep-alive", "30"]
