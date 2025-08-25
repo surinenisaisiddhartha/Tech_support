@@ -9,15 +9,16 @@ RUN apt-get update && \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements files
 COPY backend/requirements.txt .
+COPY backend/requirements-builder.txt .
+
+# Install Python dependencies
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir --prefix=/install \
     -r requirements.txt \
-    --use-deprecated=legacy-resolver && \
-    pip install --no-cache-dir --prefix=/install \
-    torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
-    --index-url https://download.pytorch.org/whl/cpu
+    -r requirements-builder.txt \
+    --use-deprecated=legacy-resolver
 
 # Production stage
 FROM python:3.9-slim
@@ -34,10 +35,13 @@ RUN apt-get update && \
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Ensure required packages are installed in the final image
+# Copy requirements for final install
+COPY backend/requirements.txt .
+
+# Install only the required packages in the final image
 RUN pip install --no-cache-dir \
-    typing-extensions>=4.0.0 \
-    email-validator>=2.1.0
+    -r requirements.txt \
+    --use-deprecated=legacy-resolver
 
 # Copy application code
 COPY backend/ .
@@ -45,7 +49,8 @@ COPY backend/ .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PYTHONIOENCODING=utf-8
 
 # Expose port
 EXPOSE 8000
