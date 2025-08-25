@@ -1,4 +1,4 @@
-# Build stage
+# Builder stage
 FROM python:3.9-slim as builder
 
 WORKDIR /app
@@ -9,7 +9,7 @@ RUN apt-get update && \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies with retry logic
+# Install Python dependencies
 COPY backend/requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu && \
@@ -20,10 +20,11 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libgomp1 \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
@@ -34,10 +35,11 @@ COPY backend/ .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=8000 \
+    PYTHONPATH=/app
 
 # Expose port
 EXPOSE 8000
 
-# Command to run the application
+# Run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
