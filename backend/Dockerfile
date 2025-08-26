@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies (copy from backend/ since build context is repo root)
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final image
@@ -40,8 +40,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Copy application code
-COPY . .
+# Copy only backend application code to keep image small
+COPY backend/ .
 
 # Run as non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app
