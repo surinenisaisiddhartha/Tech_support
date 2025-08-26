@@ -21,7 +21,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - NEXT_PUBLIC_API_URL= "https://tech-support-backend.onrender.com"
+      - NEXT_PUBLIC_API_URL=https://tech-support-backend.onrender.com
     depends_on:
       - backend
     restart: unless-stopped

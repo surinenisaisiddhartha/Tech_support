@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true, // Ignore ESLint errors during build
   },
@@ -8,21 +9,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true, // Ignore TypeScript errors during build
   },
   webpack: (config, { isServer }) => {
-    // Ignore specific ESLint rules
-    config.module.rules.push({
-      test: /\.(ts|tsx)$/,
-      enforce: 'pre',
-      exclude: /node_modules/,
-      use: [
-        {
-          loader: 'eslint-loader',
-          options: {
-            emitWarning: false,
-            failOnError: false,
-          },
-        },
-      ],
-    });
     // Disable webpack's cache to prevent memory issues
     config.cache = false;
     
