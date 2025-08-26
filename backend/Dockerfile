@@ -1,5 +1,5 @@
-# Use a smaller base image
-FROM python:3.9-slim as builder
+# Stage 1: Builder stage
+FROM python:3.11-slim as builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,10 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     TORCH_CUDA_VERSION=None
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -18,17 +17,15 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Final stage
-FROM python:3.9-slim
+# Stage 2: Final image
+FROM python:3.11-slim
 
-# Install system dependencies for PyMuPDF and Tesseract
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    tesseract-ocr \
+    # Add any system dependencies your app needs at runtime
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only the virtual environment from builder
@@ -37,17 +34,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
-COPY backend/ .
 
-# Set environment variables
-ENV PORT=8000 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    TORCH_CUDA_VERSION=None \
-    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+# Copy application code
+COPY . .
 
-# Expose port
-EXPOSE 8000
+# Run as non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
 
-# Command to run the application with 1 worker to reduce memory usage
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "10", "--timeout-keep-alive", "30"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
