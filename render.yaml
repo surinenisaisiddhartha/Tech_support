@@ -12,6 +12,8 @@ services:
         value: "1"
       - key: PORT
         value: "8000"
+      - key: CORS_ORIGINS
+        value: "https://tech-support-frontend-o842.onrender.com"
     healthCheckPath: /docs
     autoDeploy: true
     memory: 512MB  # Explicitly set memory limit
@@ -32,6 +34,6 @@ services:
       - key: PORT
         value: "10000"
       - key: NEXT_PUBLIC_API_URL
-        value: https://tech-support-backend.onrender.com
+        value: "https://tech-support-backend.onrender.com"
     autoDeploy: true
     memory: 512MB  # Explicitly set memory limit

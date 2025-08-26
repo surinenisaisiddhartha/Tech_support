@@ -11,7 +11,7 @@ app = FastAPI()
 
 # CORS
 # Allow configuring CORS origins via env var (comma-separated), with local defaults
-cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://192.168.0.50:3000")
+cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://192.168.0.50:3000, https://tech-support-backend.onrender.com")
 origins = [o.strip() for o in cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,

@@ -1,6 +1,6 @@
 'use client';
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+const BACKEND_URL = "https://tech-support-backend.onrender.com";
 
 export const uploadFile = async (file: File) => {
   const formData = new FormData();
@@ -33,7 +33,7 @@ export const askQuestion = async (query: string) => {
 
 
 export const deleteFile = async (filename: string) => {
-  const res = await fetch(`http://localhost:8000/delete/${encodeURIComponent(filename)}`, {
+  const res = await fetch(`${BACKEND_URL}/delete/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
   });
 
