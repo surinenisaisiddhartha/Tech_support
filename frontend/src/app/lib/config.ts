@@ -2,7 +2,7 @@
 
 export const API_CONFIG = {
   // Default to FastAPI backend if no env var is set
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "https://tech-support-backend-y1n1.onrender.com",
 
   ENDPOINTS: {
     // Auth endpoints
