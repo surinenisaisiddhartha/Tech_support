@@ -25,6 +25,7 @@ FROM python:3.11-slim
 
 # Install minimal runtime dependencies (for OCR and imaging)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     tesseract-ocr \
     tesseract-ocr-eng \
     libglib2.0-0 \
