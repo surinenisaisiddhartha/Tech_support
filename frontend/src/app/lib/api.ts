@@ -1,6 +1,6 @@
 'use client';
 
-const BACKEND_URL = "https://tech-support-backend.onrender.com";
+const BACKEND_URL = "https://tech-support-backend-y1n1.onrender.com";
 
 export const uploadFile = async (file: File) => {
   const formData = new FormData();

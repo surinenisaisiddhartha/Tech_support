@@ -14,6 +14,21 @@ services:
         value: "8000"
       - key: CORS_ORIGINS
         value: "https://tech-support-frontend-o842.onrender.com"
+      # MongoDB (set value in Render dashboard)
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB
+        value: chatbot_db
+      # Auth/JWT
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXP_MINUTES
+        value: "10080"
+      # External API keys
+      - key: GEMINI_API_KEY
+        sync: false
     healthCheckPath: /docs
     autoDeploy: true
 
