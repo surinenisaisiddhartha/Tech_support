@@ -1,7 +1,7 @@
 import os
 import re
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -78,7 +78,7 @@ def page_texts_to_chunks(page_texts, pdf_name, domain="techsupport", chunk_size=
             })
     return results
 
-def web_text_to_chunks(text: str, url: str, title: str | None = None, domain: str = "techsupport", chunk_size: int = 200, overlap: int = 50):
+def web_text_to_chunks(text: str, url: str, title: Optional[str] = None, domain: str = "techsupport", chunk_size: int = 200, overlap: int = 50):
     """Convert raw web page text → chunks with URL metadata.
     Metadata fields mirror PDF flow for consistency.
     """
