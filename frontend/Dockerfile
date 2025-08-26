@@ -11,6 +11,8 @@ FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=10000
+ENV HOSTNAME=0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy only necessary files
 COPY --from=builder /app/public ./public
