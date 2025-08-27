@@ -111,8 +111,7 @@ class ApiClient {
   }
 
   async stream(endpoint: string, data: any): Promise<ReadableStream<Uint8Array>> {
-    const directBase = (typeof process !== 'undefined' && process.env && (process as any).env && (process as any).env.NEXT_PUBLIC_API_URL) || 'http://127.0.0.1:8000';
-    const url = `${directBase}${endpoint}`;
+    const url = `${this.baseUrl}${endpoint}`;
 
     const response = await fetch(url, {
       method: 'POST',
